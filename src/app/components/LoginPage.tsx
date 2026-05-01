@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { EmailVerification } from "./EmailVerification";
+import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import videoBackground from "../../imports/vecteezy_an-anime-style-city-skyline-at-sunset-with-clouds-drifting_51900393.mp4";
 import fallbackImage from "../../imports/anime-style-earth.jpg";
 
@@ -58,7 +59,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
   };
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     const users = JSON.parse(localStorage.getItem("dailyflow_users") || "[]");
 
@@ -84,8 +85,40 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       password: signUpPassword
     });
 
-    // Show email verification modal
-    setShowEmailVerification(true);
+    // Send verification email via server
+    try {
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-64c5bfad/send-verification-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({
+            email: signUpEmail,
+            username: signUpUsername,
+            password: signUpPassword,
+            verificationCode: code,
+          }),
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error("Failed to send email:", result);
+        setError("Failed to send verification email. Please try again.");
+        return;
+      }
+
+      console.log("Verification email sent successfully");
+      // Show email verification modal
+      setShowEmailVerification(true);
+    } catch (error) {
+      console.error("Error sending verification email:", error);
+      setError("Network error. Please check your connection and try again.");
+    }
   };
 
   const handleVerificationSuccess = () => {
@@ -120,9 +153,37 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setVerificationCode("");
   };
 
-  const handleResendCode = () => {
+  const handleResendCode = async () => {
     const newCode = generateVerificationCode();
     setVerificationCode(newCode);
+
+    // Resend verification email
+    try {
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-64c5bfad/send-verification-email`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({
+            email: pendingUserData.email,
+            username: pendingUserData.username,
+            password: pendingUserData.password,
+            verificationCode: newCode,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        console.log("Verification email resent successfully");
+      } else {
+        console.error("Failed to resend email");
+      }
+    } catch (error) {
+      console.error("Error resending verification email:", error);
+    }
   };
 
   const handleEmailConfirm = () => {
