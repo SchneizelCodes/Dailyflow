@@ -1,32 +1,75 @@
 import { useState, useEffect } from "react";
+import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 
 interface User {
+  id: string;
   username: string;
   email: string;
-  password: string;
   createdAt: string;
+  lastSignIn: string | null;
+  emailConfirmed: boolean;
 }
 
 export function AdminUserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     loadUsers();
   }, []);
 
-  const loadUsers = () => {
-    const savedUsers = localStorage.getItem("dailyflow_users");
-    setUsers(savedUsers ? JSON.parse(savedUsers) : []);
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-64c5bfad/admin/users`,
+        {
+          headers: {
+            "Authorization": `Bearer ${publicAnonKey}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch users");
+      }
+
+      const data = await response.json();
+      setUsers(data.users || []);
+      setError("");
+    } catch (err) {
+      console.error("Error loading users:", err);
+      setError("Failed to load users");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteUser = (username: string) => {
-    if (confirm(`Are you sure you want to delete user "${username}"? This will also delete all their tasks.`)) {
-      const updatedUsers = users.filter(u => u.username !== username);
-      localStorage.setItem("dailyflow_users", JSON.stringify(updatedUsers));
-      // Also delete user's tasks
-      localStorage.removeItem(`dailyflow_user_tasks_${username}`);
-      setUsers(updatedUsers);
+  const handleDeleteUser = async (userId: string, username: string) => {
+    if (confirm(`Are you sure you want to delete user "${username}"? This action cannot be undone.`)) {
+      try {
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-64c5bfad/admin/users/${userId}`,
+          {
+            method: "DELETE",
+            headers: {
+              "Authorization": `Bearer ${publicAnonKey}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to delete user");
+        }
+
+        // Reload users list
+        await loadUsers();
+      } catch (err) {
+        console.error("Error deleting user:", err);
+        alert("Failed to delete user. Please try again.");
+      }
     }
   };
 
@@ -56,22 +99,37 @@ export function AdminUserManagement() {
         <p className="text-gray-200">Monitor and manage all registered users</p>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Total Users */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 border border-pink-300/50">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-600 text-sm font-medium mb-1">Total Users</p>
-              <p className="text-4xl font-bold text-gray-900">{users.length}</p>
-            </div>
-            <div className="w-14 h-14 bg-gradient-to-br from-pink-400 to-rose-400 rounded-lg flex items-center justify-center">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-            </div>
-          </div>
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-6">
+          {error}
         </div>
+      )}
+
+      {/* Loading State */}
+      {loading ? (
+        <div className="text-center py-12">
+          <div className="inline-block w-12 h-12 border-4 border-pink-400 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-300 mt-4">Loading users...</p>
+        </div>
+      ) : (
+        <>
+          {/* Statistics Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Total Users */}
+            <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 border border-pink-300/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-600 text-sm font-medium mb-1">Total Users</p>
+                  <p className="text-4xl font-bold text-gray-900">{users.length}</p>
+                </div>
+                <div className="w-14 h-14 bg-gradient-to-br from-pink-400 to-rose-400 rounded-lg flex items-center justify-center">
+                  <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
 
         {/* Total Tasks Across All Users */}
         <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 border border-pink-300/50">
@@ -170,6 +228,7 @@ export function AdminUserManagement() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">User</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Registered</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Tasks</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
@@ -190,6 +249,15 @@ export function AdminUserManagement() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {user.email}
                     </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                        user.emailConfirmed
+                          ? "bg-green-100 text-green-700 border border-green-300"
+                          : "bg-yellow-100 text-yellow-700 border border-yellow-300"
+                      }`}>
+                        {user.emailConfirmed ? "Verified" : "Pending"}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                       {new Date(user.createdAt).toLocaleDateString('en-US', {
                         year: 'numeric',
@@ -204,7 +272,7 @@ export function AdminUserManagement() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <button
-                        onClick={() => handleDeleteUser(user.username)}
+                        onClick={() => handleDeleteUser(user.id, user.username)}
                         className="px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded transition-colors duration-300"
                       >
                         Delete
@@ -214,7 +282,7 @@ export function AdminUserManagement() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                     {searchQuery ? "No users found matching your search" : "No users registered yet"}
                   </td>
                 </tr>
@@ -223,6 +291,8 @@ export function AdminUserManagement() {
           </table>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

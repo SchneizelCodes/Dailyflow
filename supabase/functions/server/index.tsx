@@ -24,6 +24,77 @@ app.get("/make-server-64c5bfad/health", (c) => {
   return c.json({ status: "ok" });
 });
 
+// Admin endpoint to list all users
+app.get("/make-server-64c5bfad/admin/users", async (c) => {
+  try {
+    const { createClient } = await import("jsr:@supabase/supabase-js@2");
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.log("Error: Supabase credentials not configured");
+      return c.json({ error: "Server not configured properly" }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+    // Fetch all users using admin API
+    const { data: { users }, error } = await supabase.auth.admin.listUsers();
+
+    if (error) {
+      console.log("Error fetching users:", error);
+      return c.json({ error: "Failed to fetch users" }, 500);
+    }
+
+    // Format user data
+    const formattedUsers = users.map(user => ({
+      id: user.id,
+      email: user.email,
+      username: user.user_metadata?.username || user.email?.split('@')[0] || 'Unknown',
+      createdAt: user.created_at,
+      lastSignIn: user.last_sign_in_at,
+      emailConfirmed: user.email_confirmed_at !== null,
+    }));
+
+    return c.json({ users: formattedUsers });
+  } catch (error) {
+    console.log("Error in admin/users endpoint:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// Admin endpoint to delete a user
+app.delete("/make-server-64c5bfad/admin/users/:userId", async (c) => {
+  try {
+    const { createClient } = await import("jsr:@supabase/supabase-js@2");
+    const userId = c.req.param("userId");
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.log("Error: Supabase credentials not configured");
+      return c.json({ error: "Server not configured properly" }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+
+    // Delete user using admin API
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+
+    if (error) {
+      console.log("Error deleting user:", error);
+      return c.json({ error: "Failed to delete user" }, 500);
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    console.log("Error in delete user endpoint:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
 // Send verification email endpoint
 app.post("/make-server-64c5bfad/send-verification-email", async (c) => {
   try {
